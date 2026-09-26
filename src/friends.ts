@@ -2,13 +2,14 @@ import type { Arena } from './arena';
 import type { AudioDirector } from './audio';
 import { FIGHTERS, MOVES, type Move } from './game';
 import { Multiplayer, NetworkError } from './multiplayer';
+import { CloudMultiplayer } from './cloud-multiplayer';
 import type { ProfileInput, PublicPlayer, RoomSnapshot } from './protocol';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const symbols: Record<Move, string> = { rock: '✊', paper: '✋', scissors: '✌' };
 export class FriendsRoom {
   state: RoomSnapshot | null = null;
-  network: Multiplayer;
+  network: Multiplayer | CloudMultiplayer;
   inviteOrigin = location.origin;
   inviteScope = 'Share this link with your friends.';
   private selected: Move | null = null;
@@ -20,7 +21,8 @@ export class FriendsRoom {
   private timer: ReturnType<typeof setInterval>;
   private timers: ReturnType<typeof setTimeout>[] = [];
   constructor(private arena: Arena, private audio: AudioDirector, private refresh: () => void, private message: (text: string) => void) {
-    this.network = new Multiplayer(s => this.receive(s), () => { if (this.state) this.refresh(); }, e => { this.state = null; this.clearTimers(); this.message(e.message); this.refresh(); });
+    const Transport = import.meta.env.VITE_REALTIME_URL ? CloudMultiplayer : Multiplayer;
+    this.network = new Transport(s => this.receive(s), () => { if (this.state) this.refresh(); }, e => { this.state = null; this.clearTimers(); this.message(e.message); this.refresh(); });
     this.timer = setInterval(() => {
       const s = this.state; if (!s) return;
       const key = `${s.phase}:${this.seconds()}:${s.paused}`;
@@ -36,6 +38,10 @@ export class FriendsRoom {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void this.network.sync().catch(() => {}); });
   }
   private async loadInviteOrigin() {
+    if (import.meta.env.VITE_REALTIME_URL) {
+      this.inviteScope = 'Anyone with this link can join. Six players maximum.';
+      return;
+    }
     try {
       const response = await fetch('/api/config', { signal: AbortSignal.timeout(3000) });
       if (!response.ok) throw new Error('Configuration unavailable');

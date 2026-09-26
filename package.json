@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "concurrently -k -n arena,web \"tsx watch server/index.ts\" \"vite\"",
     "build": "tsc && vite build",
+    "check:worker": "tsc -p tsconfig.worker.json && wrangler deploy --dry-run",
+    "dev:worker": "wrangler dev --port 8787",
+    "test:worker:live": "node tests/cloud-worker-live.mjs",
     "start": "NODE_ENV=production tsx server/index.ts",
     "preview": "NODE_ENV=production tsx server/index.ts",
     "pretest": "npm run build",
@@ -21,11 +24,13 @@
     "tsx": "^4.20.6"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260926.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.2",
     "@types/three": "^0.180.0",
     "concurrently": "^10.0.5",
     "typescript": "^5.9.3",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "wrangler": "^4.141.0"
   }
 }

@@ -1,4 +1,3 @@
-import { randomBytes, randomUUID } from 'node:crypto';
 import { FIGHTERS, MOVES, resolveRound, type Move, type RoundResult, type Score } from '../src/game';
 import type { Membership, ProfileInput, PublicPlayer, RoomAction, RoomPhase, RoomSnapshot } from '../src/protocol';
 
@@ -13,6 +12,9 @@ interface Room {
   score: Score; round: number; matchId: string; result: RoundResult | null;
   winnerId: string | null; rematchVotes: Set<string>; notice: string; touchedAt: number;
 }
+export type StoredRoom = Omit<Room, 'players' | 'choices' | 'rematchVotes'> & {
+  players: Member[]; choices: [string, Move][]; rematchVotes: string[];
+};
 export interface RoomOptions {
   now?: () => number;
   introMs?: number;
@@ -49,7 +51,7 @@ export class RoomService {
   private add(room: Room, socketId: string, profile: ProfileInput): Membership {
     if (this.connections.has(socketId)) throw new RoomError('Leave your current room first.');
     if (room.players.size >= 6) throw new RoomError('This room is full. Six players maximum.', 'ROOM_FULL');
-    const member: Member = { ...profile, id: randomUUID(), token: randomBytes(32).toString('hex'), socketId, connected: true, ready: true, locked: false, reconnectUntil: null };
+    const member: Member = { ...profile, id: crypto.randomUUID(), token: Array.from(crypto.getRandomValues(new Uint8Array(32)), n => n.toString(16).padStart(2, '0')).join(''), socketId, connected: true, ready: true, locked: false, reconnectUntil: null };
     room.players.set(member.id, member); room.queue.push(member.id);
     if (!room.hostId) room.hostId = member.id;
     this.connections.set(socketId, { code: room.code, playerId: member.id });
@@ -62,10 +64,29 @@ export class RoomService {
     if (this.rooms.size >= this.config.maxRooms) throw new RoomError('The arena is busy. Try again shortly.', 'BUSY');
     let code: string;
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    do { code = Array.from(randomBytes(6), n => alphabet[n % alphabet.length]).join(''); } while (this.rooms.has(code));
+    do { code = Array.from(crypto.getRandomValues(new Uint8Array(6)), n => alphabet[n % alphabet.length]).join(''); } while (this.rooms.has(code));
     const room: Room = { code, version: 0, hostId: '', players: new Map(), queue: [], active: [], phase: 'lobby', deadline: null, remaining: null, paused: false, choices: new Map(), score: [0, 0], round: 1, matchId: '', result: null, winnerId: null, rematchVotes: new Set(), notice: '', touchedAt: this.now() };
     this.rooms.set(code, room);
     return this.add(room, socketId, profile);
+  }
+  // Durable Objects route a room code to one coordinator. The local server keeps its own code generation.
+  createAt(socketId: string, code: string, input: unknown) {
+    const profile = this.profile(input);
+    if (!/^[A-Z2-9]{6}$/.test(code)) throw new RoomError('That invitation is invalid.', 'NOT_FOUND');
+    if (this.rooms.has(code)) throw new RoomError('That invite is already in use. Try again.', 'CODE_TAKEN');
+    const room: Room = { code, version: 0, hostId: '', players: new Map(), queue: [], active: [], phase: 'lobby', deadline: null, remaining: null, paused: false, choices: new Map(), score: [0, 0], round: 1, matchId: '', result: null, winnerId: null, rematchVotes: new Set(), notice: '', touchedAt: this.now() };
+    this.rooms.set(code, room);
+    return this.add(room, socketId, profile);
+  }
+  has(code: string) { return this.rooms.has(code); }
+  exportRoom(code: string): StoredRoom | null {
+    const room = this.rooms.get(code);
+    return room ? { ...room, players: [...room.players.values()], choices: [...room.choices], rematchVotes: [...room.rematchVotes] } : null;
+  }
+  restoreRoom(saved: StoredRoom) {
+    const room: Room = { ...saved, players: new Map(saved.players.map(p => [p.id, p])), choices: new Map(saved.choices), rematchVotes: new Set(saved.rematchVotes) };
+    this.rooms.set(room.code, room);
+    for (const p of room.players.values()) if (p.socketId) this.connections.set(p.socketId, { code: room.code, playerId: p.id });
   }
   join(socketId: string, code: unknown, input: unknown) { return this.add(this.get(code), socketId, this.profile(input)); }
   resume(socketId: string, input: unknown): Membership {
@@ -103,7 +124,7 @@ export class RoomService {
   private start(room: Room, active: string[]) {
     if (active.length !== 2 || active.some(id => !room.players.get(id)?.connected || !room.players.get(id)?.ready)) throw new RoomError('Two connected, ready fighters are needed.');
     room.active = active; room.queue = room.queue.filter(id => !active.includes(id));
-    room.score = [0, 0]; room.round = 1; room.result = null; room.winnerId = null; room.matchId = randomUUID(); room.choices.clear(); room.rematchVotes.clear(); room.paused = false; room.remaining = null; room.notice = '';
+    room.score = [0, 0]; room.round = 1; room.result = null; room.winnerId = null; room.matchId = crypto.randomUUID(); room.choices.clear(); room.rematchVotes.clear(); room.paused = false; room.remaining = null; room.notice = '';
     this.setPhase(room, 'intro', this.config.introMs);
   }
   action(socketId: string, input: unknown) {
@@ -178,7 +199,7 @@ export class RoomService {
     for (const room of this.rooms.values()) {
       for (const p of room.players.values()) if (p.reconnectUntil !== null && p.reconnectUntil <= this.now()) this.remove(room, p.id);
       if (!this.rooms.has(room.code)) continue;
-      if (this.now() - room.touchedAt > this.config.idleMs) {
+      if (this.now() - room.touchedAt >= this.config.idleMs) {
         // Disconnect idle sessions through the transport's expiry notification.
         for (const p of room.players.values()) if (p.socketId) this.connections.delete(p.socketId);
         room.notice = 'This room expired after two hours of inactivity.'; room.phase = 'lobby'; room.active = []; room.queue = []; room.choices.clear(); room.result = null; room.deadline = null; room.paused = false; room.players.clear(); this.update(room); this.rooms.delete(room.code); continue;

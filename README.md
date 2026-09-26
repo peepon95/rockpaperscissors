@@ -39,9 +39,10 @@ Sound is synthesized with Web Audio. The announcer uses the device's speech synt
 - `src/audio.ts`: short synthesized effects and optional browser speech.
 - `src/style.css`: portrait-first controls, smaller-height phone rules, safe-area support, desktop expansion.
 - `src/protocol.ts`: shared public room snapshots, membership, and action types.
-- `server/rooms.ts`: authoritative room lifecycle, private choices, scoring, queue, timeouts, rematch consent, and reconnect sessions.
+- `server/rooms.ts`: authoritative room lifecycle, private choices, scoring, queue, timeouts, rematch consent, and reconnect sessions. The same rules run locally and in Cloudflare Durable Objects.
 - `server/app.ts`: Socket.IO transport, input error responses, rate limits, same-origin browser connection checks, expiry loop, and production static/deep-link serving.
 - `src/multiplayer.ts`: acknowledged commands, reconnect/resync, and per-tab session storage.
+- `cloudflare/worker.ts` and `src/cloud-multiplayer.ts`: persistent Cloudflare room coordinator and browser WebSocket transport for public play.
 - `src/friends.ts` / `src/friends.css`: lobby, invitations, spectators, synchronized match presentation, and winner/queue UI.
 
 Direct Three.js was chosen over React Three Fiber because this prototype needs a small imperative scene and a simple UI; React would add a second state/rendering model without a current benefit. Vite and TypeScript provide a fast dev loop and type-checked build.
@@ -52,9 +53,9 @@ Selfie portraits remain available in CPU mode. They are decoded, center-cropped 
 
 Pending choices and session tokens never enter public room snapshots. Before reveal, other clients see only each player's lock status. The server reveals both choices together after both lock and the countdown completes. It validates socket identity, active-player membership, phase, move, match ID and round number, rejecting spectators, duplicates, stale submissions, and invalid values. Clients receive current snapshots on reconnect instead of depending on replay of missed events. The browser cannot award itself points.
 
-`npm run build && npm start` serves the production client and multiplayer from one Node process, by default on port 3001. `npm run preview` runs the same server against the build. Configure `PORT` and `PUBLIC_URL=https://your-game.example` when deploying to a host supporting persistent Node processes and WebSockets. The reverse proxy must forward `/socket.io` upgrades and preserve the Host header, or use the configured public origin. This is not a static-only deployment; do not deploy only `dist` and expect multiplayer to work.
+For local development, `npm run dev` uses the Node/Socket.IO server. `npm run build && npm start` serves both parts from one Node process on port 3001. The Cloudflare deployment uses a Worker with a Durable Object per room. To publish it, authenticate Wrangler, run `npx wrangler deploy`, then build Pages with `VITE_REALTIME_URL=https://<your-worker>.workers.dev npm run build` and deploy `dist` using `npx wrangler pages deploy dist --project-name throwdown-rps --branch main`. `npm run check:worker` typechecks and validates the Worker. With `npm run dev:worker` running locally, `npm run test:worker:live` exercises its WebSocket flow. The production frontend must be built with `VITE_REALTIME_URL`; a static Pages upload without that setting cannot create online rooms.
 
-Rooms are in memory on one server and expire after two hours without activity. Empty rooms are deleted. A server restart loses rooms and the client explains that a new invitation is needed. Add durable storage and a shared room authority before multiple server instances. Current limits: 500 live rooms, eight room creations per IP per minute, 35 acknowledged actions per socket per ten seconds, and 16KB inbound messages. Invitations intentionally grant entry to anyone holding the code until the six seats fill. No account, chat, global matchmaking, or tournament bracket is included.
+The local Node server keeps rooms in memory. Cloudflare rooms persist in Durable Object storage, so a Worker restart can restore room state and reconnecting seats. Rooms expire after two hours without activity. Cloudflare limits each room to six players, 35 actions per socket per ten seconds, and 16KB inbound messages. The local Node server also caps room creation by IP. Invitations grant entry to anyone holding the code until the six seats fill. No account, chat, global matchmaking, or tournament bracket is included.
 
 ## Background music
 
@@ -71,6 +72,6 @@ The requested "Gonna Fly Now" instrumental is **not included**: no licensed reco
 - Background audio loading, playback, pause, and removal were exercised with a generated original test tone.
 - The retained CPU mode was played through draws, attacks, KO, and a 2–0 winner screen. No game runtime errors appeared in the fresh invited-client console; the original tab recorded one Vite development reconnect warning during server restart.
 
-Still needed before public launch: select/deploy a public Node/WebSocket host and domain; real-device Safari/Android performance and audio checks; cross-network/mobile-data playtesting; and a licensed soundtrack file if that recording should be included. Selfie generation and tournament mode remain future work.
+Still needed before public launch: deploy the Cloudflare Worker and rebuild Pages with its URL; real-device Safari/Android performance and audio checks; cross-network/mobile-data playtesting; and a licensed soundtrack file if that recording should be included. Selfie generation and tournament mode remain future work.
 
 All fighters, arena geometry, and presentation are original. No Tekken, Street Fighter, or UFC assets or branding are used. Dependencies retain their respective licenses; fonts are distributed by Fontsource under their included licenses.
