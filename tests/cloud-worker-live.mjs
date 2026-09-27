@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 
 const base = process.env.ARENA_WS_URL ?? 'ws://localhost:8787';
+const origin = process.env.ARENA_ORIGIN ?? 'http://localhost:5173';
 const code = 'T' + Array.from(crypto.getRandomValues(new Uint8Array(5)), n => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[n % 32]).join('');
 const open = () => new Promise((resolve, reject) => {
-  const socket = new WebSocket(`${base}/room/${code}`, { headers: { Origin: 'http://localhost:5173' } });
+  const socket = new WebSocket(`${base}/room/${code}`, { headers: { Origin: origin } });
   socket.once('open', () => resolve(socket)); socket.once('error', reject);
 });
 function client(socket) {

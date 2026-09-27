@@ -67,11 +67,12 @@ The requested "Gonna Fly Now" instrumental is **not included**: no licensed reco
 
 - TypeScript and production build pass.
 - `npm test` first builds the production app, then runs 29 automated tests covering CPU rules and the multiplayer lifecycle, including a real Socket.IO integration test connecting six independent clients. Checks include full-room rejection, room isolation, hidden choices, spectators, stale/duplicate locks, draws, victory, rematch consent, FIFO challenger rotation, reconnect identity, pause/resume, host transfer, choice timeout, room expiry, and production deep-link routing.
+- `tests/cloud-worker-live.mjs` passed against both local Wrangler and the deployed Cloudflare Worker, creating a room, joining a second client, hiding the first move until reveal, and scoring the round.
 - Browser playthrough across three separate tabs verified creating/joining a room, spectators, hidden locks, all three winning move types, draws, KO, winner/next challenger, mutually accepted rematch, refresh/reconnection, copying invitations, and leaving a fight.
 - Phone-size checks at 390×844 and 360×640 and desktop checks were performed. A front lighting support obstructing the portrait camera was removed. The small-phone lobby scrolls vertically without horizontal overflow.
 - Background audio loading, playback, pause, and removal were exercised with a generated original test tone.
 - The retained CPU mode was played through draws, attacks, KO, and a 2–0 winner screen. No game runtime errors appeared in the fresh invited-client console; the original tab recorded one Vite development reconnect warning during server restart.
 
-Still needed before public launch: deploy the Cloudflare Worker and rebuild Pages with its URL; real-device Safari/Android performance and audio checks; cross-network/mobile-data playtesting; and a licensed soundtrack file if that recording should be included. Selfie generation and tournament mode remain future work.
+The Cloudflare Worker and Pages frontend are deployed. Next, test on real iPhone and Android devices over mobile data, check audio behavior, and supply a licensed soundtrack file if the requested recording should be included. Selfie generation and tournament mode remain future work.
 
 All fighters, arena geometry, and presentation are original. No Tekken, Street Fighter, or UFC assets or branding are used. Dependencies retain their respective licenses; fonts are distributed by Fontsource under their included licenses.
