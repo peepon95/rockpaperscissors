@@ -1,5 +1,6 @@
 import type { Arena } from './arena';
 import type { AudioDirector } from './audio';
+import qrcode from 'qrcode-generator';
 import { FIGHTERS, MOVES, type Move } from './game';
 import { Multiplayer, NetworkError } from './multiplayer';
 import { CloudMultiplayer } from './cloud-multiplayer';
@@ -7,6 +8,11 @@ import type { ProfileInput, PublicPlayer, RoomSnapshot } from './protocol';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const symbols: Record<Move, string> = { rock: '✊', paper: '✋', scissors: '✌' };
+const qrSvg = (value: string) => {
+  const code = qrcode(0, 'M');
+  code.addData(value, 'Byte'); code.make();
+  return code.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+};
 export class FriendsRoom {
   state: RoomSnapshot | null = null;
   network: Multiplayer | CloudMultiplayer;
@@ -112,7 +118,10 @@ export class FriendsRoom {
       return `<div class="room-seat ${p.connected ? '' : 'offline'}">${this.avatar(p)}<div><strong>${esc(p.name)} ${p.id === me?.id ? '<small>YOU</small>' : ''}</strong><span>${!p.connected ? 'RECONNECTING…' : s.active.includes(p.id) ? 'IN THE ARENA' : !p.ready ? 'NOT READY' : s.phase === 'lobby' ? 'READY' : `CHALLENGER ${queueIndex + 1}`}</span></div>${p.id === s.hostId ? '<b class="host-badge">HOST</b>' : ''}</div>`;
     }).join('')}</div>`;
   }
-  private invite() { return `<div class="invite-box"><label for="invite-link">INVITE YOUR CORNER</label><div><input id="invite-link" readonly value="${esc(this.inviteUrl())}" aria-label="Room invite link"><button class="primary" data-room="copy">COPY LINK ↗</button></div><p>${esc(this.inviteScope)}</p></div>`; }
+  private invite() {
+    const url = this.inviteUrl();
+    return `<div class="invite-box"><label for="invite-link">INVITE YOUR CORNER</label><div class="invite-body"><div class="invite-qr" role="img" aria-label="QR code for room ${esc(this.state?.code ?? '')}">${qrSvg(url)}</div><div class="invite-details"><strong>SCAN TO JOIN</strong><span>Point a phone camera at the code.</span><div class="invite-link-row"><input id="invite-link" readonly value="${esc(url)}" aria-label="Room invite link"><button class="secondary" data-room="copy">COPY</button></div><button class="primary invite-share-button" data-room="share">SHARE INVITE ↗</button></div></div><p>${esc(this.inviteScope)}</p></div>`;
+  }
   private hud() {
     const s = this.state!, active = this.activePlayers();
     if (active.length !== 2) return '';
@@ -151,6 +160,17 @@ export class FriendsRoom {
     if (action === 'copy') {
       try { await navigator.clipboard.writeText(this.inviteUrl()); this.message('Invite copied. Send it to your friends.'); }
       catch { this.message('Select the invitation link and copy it.'); document.querySelector<HTMLInputElement>('#invite-link')?.select(); }
+      return;
+    }
+    if (action === 'share') {
+      const url = this.inviteUrl();
+      if (navigator.share) {
+        try { await navigator.share({ title: `Throw Down room ${s.code}`, text: 'Join my Rock Paper Scissors fight.', url }); }
+        catch (error) { if ((error as DOMException).name !== 'AbortError') this.message('Could not open sharing. Scan the QR code or copy the link.'); }
+      } else {
+        try { await navigator.clipboard.writeText(url); this.message('Invite copied. Send it to your friends.'); }
+        catch { this.message('Scan the QR code or select and copy the invitation link.'); }
+      }
       return;
     }
     if (action === 'invite') {
