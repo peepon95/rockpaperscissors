@@ -65,7 +65,12 @@ export class GestureCamera {
 
   mount(canChoose: boolean, roundKey: string) {
     this.canChoose = canChoose;
-    if (roundKey !== this.roundKey) { this.roundKey = roundKey; this.submitted = false; this.resetCandidate(); }
+    if (roundKey !== this.roundKey) {
+      this.roundKey = roundKey;
+      this.submitted = false;
+      this.lastVideoTime = -1;
+      this.resetCandidate();
+    }
     if (!this.active) return;
     const video = document.querySelector<HTMLVideoElement>('#gesture-video');
     if (!video) return;
@@ -76,8 +81,7 @@ export class GestureCamera {
   }
 
   private detect(time: number) {
-    this.frame = 0;
-    if (!this.active) return;
+    if (!this.active) { this.frame = 0; return; }
     const video = this.video;
     if (video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.currentTime !== this.lastVideoTime && this.recognizer) {
       this.lastVideoTime = video.currentTime;
