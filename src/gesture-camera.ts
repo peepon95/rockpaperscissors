@@ -27,10 +27,11 @@ export class GestureCamera {
 
   constructor(private submit: (move: Move) => void, private refresh: () => void, private notify: (message: string) => void) {}
 
-  render() {
+  render(scope: 'room' | 'cpu' = 'room') {
+    const action = scope === 'room' ? 'data-room="camera"' : 'data-action="camera"';
     if (this.loading) return '<div class="gesture-launch loading"><span class="camera-dot"></span><b>WARMING UP CAMERA…</b><small>Loading hand recognition on this device.</small></div>';
-    if (!this.active) return '<button class="gesture-launch" data-room="camera"><span>◉</span><b>PLAY WITH HAND GESTURES</b><small>Camera stays on this device · buttons remain available</small></button>';
-    return `<div class="gesture-camera" style="--gesture-progress:0%"><video id="gesture-video" muted playsinline aria-label="Your mirrored camera preview"></video><div class="gesture-frame"></div><div class="gesture-readout"><small>CAMERA MODE</small><strong id="gesture-status">SHOW YOUR HAND</strong><span id="gesture-help">✊ ROCK · ✋ PAPER · ✌ SCISSORS</span></div><i class="gesture-progress"></i><button data-room="camera" aria-label="Turn off camera">×</button></div>`;
+    if (!this.active) return `<button class="gesture-launch" ${action}><span>◉</span><b>PLAY WITH HAND GESTURES</b><small>Camera stays on this device · buttons remain available</small></button>`;
+    return `<div class="gesture-camera" style="--gesture-progress:0%"><video id="gesture-video" muted playsinline aria-label="Your mirrored camera preview"></video><div class="gesture-frame"></div><div class="gesture-readout"><small>CAMERA MODE</small><strong id="gesture-status">SHOW YOUR HAND</strong><span id="gesture-help">✊ ROCK · ✋ PAPER · ✌ SCISSORS</span></div><i class="gesture-progress"></i><button ${action} aria-label="Turn off camera">×</button></div>`;
   }
 
   async toggle() { if (this.active || this.loading) this.stop(); else await this.start(); }
@@ -105,9 +106,9 @@ export class GestureCamera {
   }
   private resetCandidate() { this.candidate = null; this.candidateSince = 0; }
   private releaseStream() { this.stream?.getTracks().forEach(track => track.stop()); this.stream = null; }
-  stop() {
+  stop(refresh = true) {
     this.active = false; this.loading = false; this.canChoose = false; this.submitted = false; this.resetCandidate();
-    if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.video = null; this.releaseStream(); this.refresh();
+    if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.video = null; this.releaseStream(); if (refresh) this.refresh();
   }
   destroy() { this.stop(); this.recognizer?.close(); this.recognizer = null; }
 }

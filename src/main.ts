@@ -8,6 +8,7 @@ import './friends.css';
 import { Arena } from './arena';
 import { AudioDirector } from './audio';
 import { FriendsRoom } from './friends';
+import { GestureCamera } from './gesture-camera';
 import { FIGHTERS, LocalMatch, MOVES, type Move, type RoundResult, type AvatarDescriptor } from './game';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -21,6 +22,7 @@ let banner = '', result: RoundResult | null = null, round = 1, score = [0, 0], l
 let avatar: AvatarDescriptor = { kind: 'preset', presetId: fighter.id };
 let mode: 'cpu' | 'friends' = 'cpu', roomCode = location.pathname.match(/^\/fight\/([A-Z2-9]{6})\/?$/i)?.[1].toUpperCase(), submitting = false;
 const friends = new FriendsRoom(arena, audio, () => { if (friends.state || screen === 'room') { screen = 'room'; render(); } }, message => { toast(message); });
+const cpuCamera = new GestureCamera(move => void lockMove(move), render, message => toast(message));
 let toastTimer: ReturnType<typeof setTimeout>;
 const symbols: Record<Move, string> = { rock: '✊', paper: '✋', scissors: '✌' };
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -42,7 +44,7 @@ function vsView() { return `<section class="versus"><p class="eyebrow">THE MAIN 
 function hud() { return `<div class="hud"><div class="player-hud"><div class="hud-name"><span>${esc(playerName())}</span><small>YOU</small></div><div class="health"><i style="width:${100 - score[1] * 50}%"></i></div><div class="round-pips">${[0, 1].map(i => `<i class="${score[0] > i ? 'won' : ''}"></i>`).join('')}<small>${score[0]} WINS</small></div></div><div class="round-counter"><small>ROUND</small><b>${round.toString().padStart(2, '0')}</b><span>FIRST TO 2</span></div><div class="player-hud cpu"><div class="hud-name"><small>CPU</small><span>${opponent.name}</span></div><div class="health"><i style="width:${100 - score[0] * 50}%"></i></div><div class="round-pips">${[0, 1].map(i => `<i class="${score[1] > i ? 'won' : ''}"></i>`).join('')}<small>${score[1]} WINS</small></div></div></div>`; }
 function fightView() {
   const showingMoves = ['reveal', 'result', 'ko'].includes(screen) && result;
-  return `<section class="fight">${hud()}<div class="arena-stamp">TD / WORLD HAND SPORT LEAGUE</div><div class="announcement ${screen === 'ko' ? 'knockout' : ''}" aria-live="polite" role="status">${banner ? `<span class="eyebrow">${screen === 'locked' ? 'BOTH CHOICES LOCKED' : screen === 'result' ? result?.winner === 'draw' ? 'NO POINTS. RUN IT BACK.' : result?.winner === 'player' ? 'ROUND TO YOU' : 'ROUND TO ' + opponent.name : screen === 'ko' ? 'THAT SETTLES IT.' : 'THE MAIN EVENT'}</span><h2 key="${esc(banner)}">${esc(banner)}</h2>` : ''}</div>${showingMoves ? `<div class="reveal-moves"><span>${symbols[result!.player]} ${result!.player.toUpperCase()}</span><i>×</i><span>${symbols[result!.cpu]} ${result!.cpu.toUpperCase()}</span></div>` : ''}<div class="fight-bottom">${screen === 'choose' || screen === 'locked' ? `<div class="pick-heading"><span>${screen === 'choose' ? 'MAKE YOUR MOVE.' : 'CHOICE LOCKED.'}</span><small>${screen === 'choose' ? 'YOUR CHOICE STAYS SECRET' : 'NO TAKEBACKS. JUST TENSION.'}</small></div><div class="moves">${MOVES.map((m, i) => `<button class="move ${locked === m ? 'locked' : ''}" data-move="${m}" ${screen !== 'choose' ? 'disabled' : ''} aria-label="${m.toUpperCase()}"><small>0${i + 1} <span>${['R', 'P', 'S'][i]}</span></small><b>${symbols[m]}</b><strong>${m.toUpperCase()}</strong><em>${['CRUSH IT', 'WRAP IT UP', 'CUT LOOSE'][i]}</em></button>`).join('')}</div><p class="micro centered">${screen === 'choose' ? 'ONE TAP TO LOCK IN. WIN TWO ROUNDS TO TAKE IT ALL.' : 'YOUR OPPONENT’S MOVE IS HIDDEN UNTIL THE REVEAL.'}</p>` : screen === 'result' ? `<button class="primary next-round" data-action="next">NEXT ROUND <span>→</span></button>` : '<div class="broadcast-caption">LIVE FROM THE THROWDOWN ARENA</div>'}</div></section>`;
+  return `<section class="fight">${hud()}<div class="arena-stamp">TD / WORLD HAND SPORT LEAGUE</div><div class="announcement ${screen === 'ko' ? 'knockout' : ''}" aria-live="polite" role="status">${banner ? `<span class="eyebrow">${screen === 'locked' ? 'BOTH CHOICES LOCKED' : screen === 'result' ? result?.winner === 'draw' ? 'NO POINTS. RUN IT BACK.' : result?.winner === 'player' ? 'ROUND TO YOU' : 'ROUND TO ' + opponent.name : screen === 'ko' ? 'THAT SETTLES IT.' : 'THE MAIN EVENT'}</span><h2 key="${esc(banner)}">${esc(banner)}</h2>` : ''}</div>${showingMoves ? `<div class="reveal-moves"><span>${symbols[result!.player]} ${result!.player.toUpperCase()}</span><i>×</i><span>${symbols[result!.cpu]} ${result!.cpu.toUpperCase()}</span></div>` : ''}<div class="fight-bottom">${screen === 'choose' || screen === 'locked' ? `<div class="pick-heading"><span>${screen === 'choose' ? 'MAKE YOUR MOVE.' : 'CHOICE LOCKED.'}</span><small>${screen === 'choose' ? 'YOUR CHOICE STAYS SECRET' : 'NO TAKEBACKS. JUST TENSION.'}</small></div>${cpuCamera.render('cpu')}<div class="moves">${MOVES.map((m, i) => `<button class="move ${locked === m ? 'locked' : ''}" data-move="${m}" ${screen !== 'choose' ? 'disabled' : ''} aria-label="${m.toUpperCase()}"><small>0${i + 1} <span>${['R', 'P', 'S'][i]}</span></small><b>${symbols[m]}</b><strong>${m.toUpperCase()}</strong><em>${['CRUSH IT', 'WRAP IT UP', 'CUT LOOSE'][i]}</em></button>`).join('')}</div><p class="micro centered">${screen === 'choose' ? cpuCamera.active ? 'HOLD A GESTURE STEADY OR TAP A BUTTON TO LOCK.' : 'ONE TAP TO LOCK IN. WIN TWO ROUNDS TO TAKE IT ALL.' : 'YOUR OPPONENT’S MOVE IS HIDDEN UNTIL THE REVEAL.'}</p>` : screen === 'result' ? `<button class="primary next-round" data-action="next">NEXT ROUND <span>→</span></button>` : '<div class="broadcast-caption">LIVE FROM THE THROWDOWN ARENA</div>'}</div></section>`;
 }
 function winnerView() { const won = result?.matchWinner === 'player'; return `<section class="winner"><div class="winner-title"><p class="eyebrow">${won ? 'THE CROWD GOES UNREASONABLY WILD' : 'A BRUISED EGO. A WORTHY OPPONENT.'}</p><h1>${won ? 'BIG' : 'GOOD'}<br><span class="outline">${won ? 'HAND ENERGY.' : 'FIGHT.'}</span></h1></div><div class="winner-panel"><p class="eyebrow">WINNER</p><h2>${won ? esc(playerName()) : opponent.name}</h2><div class="final-score"><span>${esc(playerName())}</span><b>${score[0]} <i>–</i> ${score[1]}</b><span>${opponent.name}</span></div><button class="primary" data-action="rematch">RUN IT BACK <span>↻</span></button><div class="winner-secondary"><button class="secondary" data-action="new">NEW FIGHT</button><button class="secondary" data-action="share">SHARE RESULT ↗</button></div><p class="micro centered">${won ? 'GO ON. BE INSUFFERABLE ABOUT IT.' : 'THE REMATCH IS WHERE LEGENDS ARE MADE.'}</p></div></section>`; }
 function render() {
@@ -51,7 +53,7 @@ function render() {
   document.body.dataset.screen = screen;
   const toastElement = document.querySelector('#toast'), toastText = toastElement?.classList.contains('show') ? toastElement.textContent : '';
   app.innerHTML = `${header()}<main>${screen === 'room' ? friends.render() : screen === 'home' ? homeView() : screen === 'select' ? selectView() : screen === 'vs' ? vsView() : screen === 'winner' ? winnerView() : fightView()}</main>${footer()}<div id="toast" role="status" class="${toastText ? 'show' : ''}">${esc(toastText || '')}</div><dialog id="info"><button class="dialog-close icon-btn" aria-label="Close dialog">×</button><div id="dialog-content"></div></dialog>`;
-  if (screen === 'room') friends.mount();
+  if (screen === 'room') friends.mount(); else cpuCamera.mount(screen === 'choose', `cpu:${sequence}:${round}`);
   document.querySelector('#fighter-form')?.addEventListener('submit', e => { e.preventDefault(); name = document.querySelector<HTMLInputElement>('#player-name')!.value.trim(); if (mode === 'friends') void enterFriends(); else void startMatch(); });
   document.querySelector('#player-name')?.addEventListener('input', e => name = (e.target as HTMLInputElement).value);
   document.querySelector('#selfie')?.addEventListener('change', uploadPhoto);
@@ -60,7 +62,7 @@ function render() {
 }
 function toast(message: string) { const el = document.querySelector('#toast'); if (!el) return; el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => document.querySelector('#toast')?.classList.remove('show'), 4500); }
 function dialog(content: string) { document.querySelector('#dialog-content')!.innerHTML = content; document.querySelector<HTMLDialogElement>('#info')!.showModal(); }
-async function goHome() { document.querySelector<HTMLDialogElement>('#info')?.close(); sequence++; submitting = false; screen = 'home'; await friends.leave(); roomCode = undefined; history.replaceState({}, '', '/'); arena.mode = 'home'; arena.reset(); render(); }
+async function goHome() { document.querySelector<HTMLDialogElement>('#info')?.close(); sequence++; submitting = false; cpuCamera.stop(false); screen = 'home'; await friends.leave(); roomCode = undefined; history.replaceState({}, '', '/'); arena.mode = 'home'; arena.reset(); render(); }
 function chooseFighter() { document.querySelector<HTMLDialogElement>('#info')?.close(); sequence++; screen = 'select'; arena.mode = 'select'; arena.reset(); render(); }
 async function enterFriends() {
   if (submitting) return;
@@ -119,6 +121,7 @@ document.addEventListener('click', e => {
     case 'create': mode = 'friends'; roomCode = undefined; audio.unlock(); chooseFighter(); break;
     case 'new': mode = 'cpu'; audio.unlock(); chooseFighter(); break;
     case 'join': mode = 'cpu'; roomCode = undefined; audio.unlock(); chooseFighter(); break;
+    case 'camera': void cpuCamera.toggle(); break;
     case 'music': musicDialog(); break;
     case 'music-toggle': audio.toggleMusic(); musicDialog(); break;
     case 'music-remove': audio.removeMusic(); musicDialog(); break;
