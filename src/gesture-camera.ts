@@ -3,7 +3,8 @@ import type { Move } from './game';
 
 const WASM_ROOT = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm';
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
-const HOLD_MS = 850;
+const HOLD_MS = 700;
+const LOST_GRACE_MS = 280;
 const gestureMoves: Record<string, Move | undefined> = {
   Closed_Fist: 'rock',
   Open_Palm: 'paper',
@@ -21,6 +22,7 @@ export class GestureCamera {
   private lastVideoTime = -1;
   private candidate: Move | null = null;
   private candidateSince = 0;
+  private candidateLastSeen = 0;
   private submitted = false;
   private roundKey = '';
   private canChoose = false;
@@ -30,13 +32,14 @@ export class GestureCamera {
   render(scope: 'room' | 'cpu' = 'room') {
     const action = scope === 'room' ? 'data-room="camera"' : 'data-action="camera"';
     if (this.loading) return '<div class="gesture-launch loading"><span class="camera-dot"></span><b>WARMING UP CAMERA…</b><small>Loading hand recognition on this device.</small></div>';
-    if (!this.active) return `<button class="gesture-launch" ${action}><span>◉</span><b>PLAY WITH HAND GESTURES</b><small>Camera stays on this device · buttons remain available</small></button>`;
-    return `<div class="gesture-camera" style="--gesture-progress:0%"><video id="gesture-video" muted playsinline aria-label="Your mirrored camera preview"></video><div class="gesture-frame"></div><div class="gesture-readout"><small>CAMERA MODE</small><strong id="gesture-status">SHOW YOUR HAND</strong><span id="gesture-help">✊ ROCK · ✋ PAPER · ✌ SCISSORS</span></div><i class="gesture-progress"></i><button ${action} aria-label="Turn off camera">×</button></div>`;
+    if (!this.active) return `<button class="gesture-launch" ${action}><span>◉</span><b>ENABLE CAMERA TO PLAY</b><small>Camera permission is required for hand-gesture controls</small></button>`;
+    return '<div class="gesture-camera" style="--gesture-progress:0%"><video id="gesture-video" muted playsinline aria-label="Your mirrored camera preview"></video><div class="gesture-frame"></div><div class="gesture-readout"><small>LIVE HAND CONTROL</small><strong id="gesture-status">SHOW YOUR HAND</strong><span id="gesture-help">✊ ROCK · ✋ PAPER · ✌ SCISSORS</span></div><i class="gesture-progress"></i></div>';
   }
 
   async toggle() { if (this.active || this.loading) this.stop(); else await this.start(); }
 
   async start() {
+    if (this.active || this.loading) return;
     if (!navigator.mediaDevices?.getUserMedia) { this.notify('Camera gestures are not supported in this browser. Use the move buttons.'); return; }
     this.loading = true; this.refresh();
     try {
@@ -46,8 +49,8 @@ export class GestureCamera {
         const vision = await FilesetResolver.forVisionTasks(WASM_ROOT);
         const options = {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' as const }, runningMode: 'VIDEO' as const, numHands: 1,
-          minHandDetectionConfidence: .55, minHandPresenceConfidence: .55, minTrackingConfidence: .55,
-          cannedGesturesClassifierOptions: { scoreThreshold: .65, categoryAllowlist: Object.keys(gestureMoves) },
+          minHandDetectionConfidence: .45, minHandPresenceConfidence: .45, minTrackingConfidence: .45,
+          cannedGesturesClassifierOptions: { scoreThreshold: .5, categoryAllowlist: Object.keys(gestureMoves) },
         };
         try { this.recognizer = await GestureRecognizer.createFromOptions(vision, options); }
         catch { this.recognizer = await GestureRecognizer.createFromOptions(vision, { ...options, baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' } }); }
@@ -81,7 +84,7 @@ export class GestureCamera {
       try {
         const result = this.recognizer.recognizeForVideo(video, time);
         const category = result.gestures[0]?.[0];
-        const move = category && category.score >= .65 ? gestureMoves[category.categoryName] ?? null : null;
+        const move = category && category.score >= .5 ? gestureMoves[category.categoryName] ?? null : this.classifyLandmarks(result.landmarks[0]);
         this.track(move, time);
       } catch { this.update('KEEP YOUR HAND IN FRAME', 'Try moving into brighter light.', 0); }
     }
@@ -90,11 +93,29 @@ export class GestureCamera {
 
   private track(move: Move | null, now: number) {
     if (!this.canChoose || this.submitted) { this.resetCandidate(); this.update(this.submitted ? 'CHOICE LOCKED' : 'WAIT FOR THE ROUND', 'Camera is ready.', 0); return; }
-    if (!move) { this.resetCandidate(); this.update('SHOW YOUR HAND', '✊ ROCK · ✋ PAPER · ✌ SCISSORS', 0); return; }
-    if (move !== this.candidate) { this.candidate = move; this.candidateSince = now; }
+    if (!move) {
+      if (this.candidate && now - this.candidateLastSeen < LOST_GRACE_MS) return;
+      this.resetCandidate(); this.update('SHOW YOUR HAND', 'Keep one hand open and fully inside the frame.', 0); return;
+    }
+    if (move !== this.candidate) {
+      if (this.candidate && now - this.candidateLastSeen < LOST_GRACE_MS) return;
+      this.candidate = move; this.candidateSince = now;
+    }
+    this.candidateLastSeen = now;
     const progress = Math.min(1, (now - this.candidateSince) / HOLD_MS);
     this.update(`${labels[move]} DETECTED`, progress < 1 ? 'Hold it steady…' : 'Locked!', progress);
     if (progress >= 1) { this.submitted = true; this.resetCandidate(); navigator.vibrate?.(35); this.submit(move); }
+  }
+  private classifyLandmarks(hand?: Array<{ x: number; y: number }>): Move | null {
+    if (!hand?.[20]) return null;
+    const wrist = hand[0];
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const extended = [[8, 6], [12, 10], [16, 14], [20, 18]].map(([tip, joint]) => distance(hand[tip], wrist) > distance(hand[joint], wrist) * 1.12);
+    const count = extended.filter(Boolean).length;
+    if (count === 0) return 'rock';
+    if (extended[0] && extended[1] && !extended[2] && !extended[3]) return 'scissors';
+    if (count >= 3) return 'paper';
+    return null;
   }
 
   private update(status: string, help: string, progress: number) {
@@ -104,7 +125,7 @@ export class GestureCamera {
     if (statusEl) statusEl.textContent = status;
     if (helpEl) helpEl.textContent = help;
   }
-  private resetCandidate() { this.candidate = null; this.candidateSince = 0; }
+  private resetCandidate() { this.candidate = null; this.candidateSince = 0; this.candidateLastSeen = 0; }
   private releaseStream() { this.stream?.getTracks().forEach(track => track.stop()); this.stream = null; }
   stop(refresh = true) {
     this.active = false; this.loading = false; this.canChoose = false; this.submitted = false; this.resetCandidate();

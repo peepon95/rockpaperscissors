@@ -25,7 +25,7 @@ npm start
 
 Tap a move once to lock it. First to two wins; draws don't score. Multiplayer rounds advance automatically. Waiting ready challengers get priority: the winner stays and the loser goes to the end of the queue. When no challenger is ready, both fighters may consent to a rematch. Players can unready while waiting.
 
-During either a CPU match or a live friends match, **Play with hand gestures** enables an optional mirrored camera preview. MediaPipe recognizes a closed fist as rock, an open palm as paper, and a victory sign as scissors. Hold a recognized sign steady until the confirmation bar fills. Recognition runs in the browser and only the resulting move is submitted to the game; camera frames are not uploaded or shown to an opponent. Camera permission is requested only after the player enables the feature, and the regular move buttons remain available as a fallback.
+CPU and live friends matches use a mirrored camera preview for hand-gesture controls. MediaPipe recognizes a closed fist as rock, an open palm as paper, and a victory sign as scissors, with a landmark-based fallback for less confident frames. Hold a recognized sign steady until the confirmation bar fills. Recognition runs in the browser and only the resulting move is submitted to the game; camera frames are not uploaded or shown to an opponent. Camera permission is requested as the player enters or readies for a fight.
 
 **Play with a random stranger:** intentionally uses the existing local CPU match, labeled "CPU opponent" on the button, fighter selection, and match HUD. It does not pretend to match with an unknown human. CPU rounds use Next Round; Run It Back preserves the opponent.
 

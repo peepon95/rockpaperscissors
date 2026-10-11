@@ -1,7 +1,7 @@
 import type { Arena } from './arena';
 import type { AudioDirector } from './audio';
 import qrcode from 'qrcode-generator';
-import { FIGHTERS, MOVES, type Move } from './game';
+import { FIGHTERS, type Move } from './game';
 import { Multiplayer, NetworkError } from './multiplayer';
 import { CloudMultiplayer } from './cloud-multiplayer';
 import { GestureCamera } from './gesture-camera';
@@ -156,7 +156,7 @@ export class FriendsRoom {
     if (s.phase === 'reveal' && s.result) { banner = s.result.matchWinner && this.seconds() <= 2 ? 'K.O.' : s.result.headline; label = s.result.winner === 'draw' ? 'NO POINTS. RUN IT BACK.' : `ROUND TO ${active[s.result.winner === 'player' ? 0 : 1].name}`; }
     const canChoose = s.phase === 'choosing' && isActive && !me?.locked && !this.pending && online && !s.paused;
     const watcher = isActive ? me?.locked ? 'YOUR CHOICE IS LOCKED.' : 'MAKE YOUR MOVE.' : `RINGSIDE · ${me?.ready ? 'YOU’RE IN THE CHALLENGER QUEUE' : 'YOU’RE WATCHING'}`;
-    return `<section class="fight friends-fight">${toolbar}${status}${this.hud()}<div class="announcement ${banner === 'K.O.' ? 'knockout' : ''}" role="status" aria-live="polite">${banner && !s.paused ? `<span class="eyebrow">${esc(label)}</span><h2>${esc(banner)}</h2>` : ''}</div>${s.phase === 'reveal' && s.result ? `<div class="reveal-moves"><span>${symbols[s.result.player]} ${s.result.player.toUpperCase()}</span><i>×</i><span>${symbols[s.result.cpu]} ${s.result.cpu.toUpperCase()}</span></div>` : ''}<div class="fight-bottom"><div class="pick-heading"><span>${watcher}</span><small>${s.phase === 'choosing' ? `${this.seconds()}s TO CHOOSE` : `${s.players.length - 2} WATCHING`}</small></div>${isActive && s.phase === 'choosing' ? `${this.camera.render()}<div class="moves">${MOVES.map((m, i) => `<button class="move ${this.selected === m ? 'locked' : ''}" data-room-move="${m}" ${!canChoose ? 'disabled' : ''} aria-label="${m.toUpperCase()}"><small>0${i + 1}</small><b>${symbols[m]}</b><strong>${m.toUpperCase()}</strong></button>`).join('')}</div><p class="micro centered">${me?.locked ? 'WAITING FOR YOUR OPPONENT. THEIR CHOICE IS STILL SECRET.' : this.camera.active ? 'HOLD A GESTURE STEADY OR TAP A BUTTON TO LOCK.' : 'ONE TAP TO LOCK. YOUR FRIEND CANNOT SEE YOUR MOVE.'}</p>` : `<div class="spectator-status">${active.map(p => `<span>${esc(p.name)} <b>${p.locked ? 'LOCKED ✓' : s.phase === 'choosing' ? 'CHOOSING…' : 'IN THE ARENA'}</b></span>`).join('')}</div>${!isActive && me ? `<button class="text-btn" data-room="ready" ${this.pending || !online ? 'disabled' : ''}>${me.ready ? '✓ QUEUED FOR MY TURN · UNREADY' : 'I’M READY TO CHALLENGE'}</button>` : ''}`}</div></section>`;
+    return `<section class="fight friends-fight">${toolbar}${status}${this.hud()}<div class="announcement ${banner === 'K.O.' ? 'knockout' : ''}" role="status" aria-live="polite">${banner && !s.paused ? `<span class="eyebrow">${esc(label)}</span><h2>${esc(banner)}</h2>` : ''}</div>${s.phase === 'reveal' && s.result ? `<div class="reveal-moves"><span>${symbols[s.result.player]} ${s.result.player.toUpperCase()}</span><i>×</i><span>${symbols[s.result.cpu]} ${s.result.cpu.toUpperCase()}</span></div>` : ''}<div class="fight-bottom gesture-only"><div class="pick-heading"><span>${watcher}</span><small>${s.phase === 'choosing' ? `${this.seconds()}s TO CHOOSE` : `${s.players.length - 2} WATCHING`}</small></div>${isActive && s.phase === 'choosing' ? `${this.camera.render()}<p class="micro centered">${me?.locked ? 'WAITING FOR YOUR OPPONENT. THEIR CHOICE IS STILL SECRET.' : 'HOLD ✊ ROCK, ✋ PAPER, OR ✌ SCISSORS INSIDE THE FRAME.'}</p>` : `<div class="spectator-status">${active.map(p => `<span>${esc(p.name)} <b>${p.locked ? 'LOCKED ✓' : s.phase === 'choosing' ? 'CHOOSING…' : 'IN THE ARENA'}</b></span>`).join('')}</div>${!isActive && me ? `<button class="text-btn" data-room="ready" ${this.pending || !online ? 'disabled' : ''}>${me.ready ? '✓ QUEUED FOR MY TURN · UNREADY' : 'I’M READY TO CHALLENGE'}</button>` : ''}`}</div></section>`;
   }
   mount() {
     const s = this.state, me = this.me();
@@ -190,7 +190,7 @@ export class FriendsRoom {
     if (this.pending) return;
     this.pending = true; this.refresh();
     try {
-      if (action === 'ready') await this.network.action({ type: 'ready', ready: !this.me()?.ready });
+      if (action === 'ready') { if (!this.me()?.ready) void this.camera.start(); await this.network.action({ type: 'ready', ready: !this.me()?.ready }); }
       else if (action === 'start') await this.network.action({ type: 'start' });
       else if (action === 'rematch' || action === 'next') await this.network.action({ type: action, matchId: s.matchId });
     } catch (e) { this.message((e as Error).message); }
