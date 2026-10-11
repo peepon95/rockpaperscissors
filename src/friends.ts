@@ -4,6 +4,7 @@ import qrcode from 'qrcode-generator';
 import { FIGHTERS, MOVES, type Move } from './game';
 import { Multiplayer, NetworkError } from './multiplayer';
 import { CloudMultiplayer } from './cloud-multiplayer';
+import { GestureCamera } from './gesture-camera';
 import type { ProfileInput, PublicPlayer, RoomSnapshot } from './protocol';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -26,9 +27,11 @@ export class FriendsRoom {
   private sceneKey = '';
   private timer: ReturnType<typeof setInterval>;
   private timers: ReturnType<typeof setTimeout>[] = [];
+  private camera: GestureCamera;
   constructor(private arena: Arena, private audio: AudioDirector, private refresh: () => void, private message: (text: string) => void) {
     const Transport = import.meta.env.VITE_REALTIME_URL ? CloudMultiplayer : Multiplayer;
     this.network = new Transport(s => this.receive(s), () => { if (this.state) this.refresh(); }, e => { this.state = null; this.clearTimers(); this.message(e.message); this.refresh(); });
+    this.camera = new GestureCamera(move => void this.choose(move), refresh, message);
     this.timer = setInterval(() => {
       const s = this.state; if (!s) return;
       const key = `${s.phase}:${this.seconds()}:${s.paused}`;
@@ -105,7 +108,7 @@ export class FriendsRoom {
     history.replaceState({}, '', `/fight/${membership.code}`);
   }
   resume(code: string) { return this.network.resume(code); }
-  async leave() { this.state = null; this.clearTimers(); this.sceneKey = ''; this.fightersKey = ''; this.pending = false; this.selected = null; await this.network.leave().catch(() => {}); }
+  async leave() { this.camera.stop(); this.state = null; this.clearTimers(); this.sceneKey = ''; this.fightersKey = ''; this.pending = false; this.selected = null; await this.network.leave().catch(() => {}); }
   private me() { return this.state?.players.find(p => p.id === this.network.membership?.playerId); }
   inviteUrl() { return `${this.inviteOrigin}/fight/${this.state?.code ?? ''}`; }
   private avatar(p: PublicPlayer) { return `<img src="${this.arena.portraits[p.fighterId]}" alt="" draggable="false">`; }
@@ -153,7 +156,12 @@ export class FriendsRoom {
     if (s.phase === 'reveal' && s.result) { banner = s.result.matchWinner && this.seconds() <= 2 ? 'K.O.' : s.result.headline; label = s.result.winner === 'draw' ? 'NO POINTS. RUN IT BACK.' : `ROUND TO ${active[s.result.winner === 'player' ? 0 : 1].name}`; }
     const canChoose = s.phase === 'choosing' && isActive && !me?.locked && !this.pending && online && !s.paused;
     const watcher = isActive ? me?.locked ? 'YOUR CHOICE IS LOCKED.' : 'MAKE YOUR MOVE.' : `RINGSIDE · ${me?.ready ? 'YOU’RE IN THE CHALLENGER QUEUE' : 'YOU’RE WATCHING'}`;
-    return `<section class="fight friends-fight">${toolbar}${status}${this.hud()}<div class="announcement ${banner === 'K.O.' ? 'knockout' : ''}" role="status" aria-live="polite">${banner && !s.paused ? `<span class="eyebrow">${esc(label)}</span><h2>${esc(banner)}</h2>` : ''}</div>${s.phase === 'reveal' && s.result ? `<div class="reveal-moves"><span>${symbols[s.result.player]} ${s.result.player.toUpperCase()}</span><i>×</i><span>${symbols[s.result.cpu]} ${s.result.cpu.toUpperCase()}</span></div>` : ''}<div class="fight-bottom"><div class="pick-heading"><span>${watcher}</span><small>${s.phase === 'choosing' ? `${this.seconds()}s TO CHOOSE` : `${s.players.length - 2} WATCHING`}</small></div>${isActive && s.phase === 'choosing' ? `<div class="moves">${MOVES.map((m, i) => `<button class="move ${this.selected === m ? 'locked' : ''}" data-room-move="${m}" ${!canChoose ? 'disabled' : ''} aria-label="${m.toUpperCase()}"><small>0${i + 1}</small><b>${symbols[m]}</b><strong>${m.toUpperCase()}</strong></button>`).join('')}</div><p class="micro centered">${me?.locked ? 'WAITING FOR YOUR OPPONENT. THEIR CHOICE IS STILL SECRET.' : 'ONE TAP TO LOCK. YOUR FRIEND CANNOT SEE YOUR MOVE.'}</p>` : `<div class="spectator-status">${active.map(p => `<span>${esc(p.name)} <b>${p.locked ? 'LOCKED ✓' : s.phase === 'choosing' ? 'CHOOSING…' : 'IN THE ARENA'}</b></span>`).join('')}</div>${!isActive && me ? `<button class="text-btn" data-room="ready" ${this.pending || !online ? 'disabled' : ''}>${me.ready ? '✓ QUEUED FOR MY TURN · UNREADY' : 'I’M READY TO CHALLENGE'}</button>` : ''}`}</div></section>`;
+    return `<section class="fight friends-fight">${toolbar}${status}${this.hud()}<div class="announcement ${banner === 'K.O.' ? 'knockout' : ''}" role="status" aria-live="polite">${banner && !s.paused ? `<span class="eyebrow">${esc(label)}</span><h2>${esc(banner)}</h2>` : ''}</div>${s.phase === 'reveal' && s.result ? `<div class="reveal-moves"><span>${symbols[s.result.player]} ${s.result.player.toUpperCase()}</span><i>×</i><span>${symbols[s.result.cpu]} ${s.result.cpu.toUpperCase()}</span></div>` : ''}<div class="fight-bottom"><div class="pick-heading"><span>${watcher}</span><small>${s.phase === 'choosing' ? `${this.seconds()}s TO CHOOSE` : `${s.players.length - 2} WATCHING`}</small></div>${isActive && s.phase === 'choosing' ? `${this.camera.render()}<div class="moves">${MOVES.map((m, i) => `<button class="move ${this.selected === m ? 'locked' : ''}" data-room-move="${m}" ${!canChoose ? 'disabled' : ''} aria-label="${m.toUpperCase()}"><small>0${i + 1}</small><b>${symbols[m]}</b><strong>${m.toUpperCase()}</strong></button>`).join('')}</div><p class="micro centered">${me?.locked ? 'WAITING FOR YOUR OPPONENT. THEIR CHOICE IS STILL SECRET.' : this.camera.active ? 'HOLD A GESTURE STEADY OR TAP A BUTTON TO LOCK.' : 'ONE TAP TO LOCK. YOUR FRIEND CANNOT SEE YOUR MOVE.'}</p>` : `<div class="spectator-status">${active.map(p => `<span>${esc(p.name)} <b>${p.locked ? 'LOCKED ✓' : s.phase === 'choosing' ? 'CHOOSING…' : 'IN THE ARENA'}</b></span>`).join('')}</div>${!isActive && me ? `<button class="text-btn" data-room="ready" ${this.pending || !online ? 'disabled' : ''}>${me.ready ? '✓ QUEUED FOR MY TURN · UNREADY' : 'I’M READY TO CHALLENGE'}</button>` : ''}`}</div></section>`;
+  }
+  mount() {
+    const s = this.state, me = this.me();
+    const canChoose = !!s && !!me && s.phase === 'choosing' && s.active.includes(me.id) && !me.locked && !this.pending && this.network.connected && !s.paused;
+    this.camera.mount(canChoose, s ? `${s.matchId}:${s.round}` : '');
   }
   async action(action: string) {
     const s = this.state; if (!s) return;
@@ -178,6 +186,7 @@ export class FriendsRoom {
       document.querySelector('#dialog-content')!.innerHTML = `<p class="eyebrow">MAKE IT PERSONAL</p><h2>BRING A FRIEND.</h2>${this.invite()}`;
       dialog.showModal(); return;
     }
+    if (action === 'camera') { await this.camera.toggle(); return; }
     if (this.pending) return;
     this.pending = true; this.refresh();
     try {
@@ -195,5 +204,5 @@ export class FriendsRoom {
     catch (e) { this.selected = null; this.message(e instanceof NetworkError ? e.message : 'Could not lock that move.'); }
     finally { this.pending = false; this.refresh(); }
   }
-  destroy() { clearInterval(this.timer); this.clearTimers(); }
+  destroy() { clearInterval(this.timer); this.clearTimers(); this.camera.destroy(); }
 }

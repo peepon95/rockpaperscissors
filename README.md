@@ -25,6 +25,8 @@ npm start
 
 Tap a move once to lock it. First to two wins; draws don't score. Multiplayer rounds advance automatically. Waiting ready challengers get priority: the winner stays and the loser goes to the end of the queue. When no challenger is ready, both fighters may consent to a rematch. Players can unready while waiting.
 
+During a live friends match, **Play with hand gestures** enables an optional mirrored camera preview. MediaPipe recognizes a closed fist as rock, an open palm as paper, and a victory sign as scissors. Hold a recognized sign steady until the confirmation bar fills. Recognition runs in the browser and only the resulting move is submitted to the room server; camera frames are not uploaded or shown to the opponent. Camera permission is requested only after the player enables the feature, and the regular move buttons remain available as a fallback.
+
 **Play with a random stranger:** intentionally uses the existing local CPU match, labeled "CPU opponent" on the button, fighter selection, and match HUD. It does not pretend to match with an unknown human. CPU rounds use Next Round; Run It Back preserves the opponent.
 
 R / P / S are desktop shortcuts. A missing move times out after 45 seconds, returns the room to the lobby, and marks the idle fighter unready without inventing a move for them. A disconnected fighter pauses the match for up to 60 seconds. Refreshing the same tab restores the seat using a private reconnect token. On explicit exit or grace-period expiry, an interrupted fight returns to the lobby and remaining players may start another fight. The host role transfers to an available player.
@@ -42,6 +44,7 @@ Sound is synthesized with Web Audio. The announcer uses the device's speech synt
 - `server/rooms.ts`: authoritative room lifecycle, private choices, scoring, queue, timeouts, rematch consent, and reconnect sessions. The same rules run locally and in Cloudflare Durable Objects.
 - `server/app.ts`: Socket.IO transport, input error responses, rate limits, same-origin browser connection checks, expiry loop, and production static/deep-link serving.
 - `src/multiplayer.ts`: acknowledged commands, reconnect/resync, and per-tab session storage.
+- `src/gesture-camera.ts`: optional local MediaPipe gesture recognition, steady-hold confirmation, camera lifecycle, and move submission.
 - `cloudflare/worker.ts` and `src/cloud-multiplayer.ts`: persistent Cloudflare room coordinator and browser WebSocket transport for public play.
 - `src/friends.ts` / `src/friends.css`: lobby, invitations, spectators, synchronized match presentation, and winner/queue UI.
 

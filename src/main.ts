@@ -51,6 +51,7 @@ function render() {
   document.body.dataset.screen = screen;
   const toastElement = document.querySelector('#toast'), toastText = toastElement?.classList.contains('show') ? toastElement.textContent : '';
   app.innerHTML = `${header()}<main>${screen === 'room' ? friends.render() : screen === 'home' ? homeView() : screen === 'select' ? selectView() : screen === 'vs' ? vsView() : screen === 'winner' ? winnerView() : fightView()}</main>${footer()}<div id="toast" role="status" class="${toastText ? 'show' : ''}">${esc(toastText || '')}</div><dialog id="info"><button class="dialog-close icon-btn" aria-label="Close dialog">×</button><div id="dialog-content"></div></dialog>`;
+  if (screen === 'room') friends.mount();
   document.querySelector('#fighter-form')?.addEventListener('submit', e => { e.preventDefault(); name = document.querySelector<HTMLInputElement>('#player-name')!.value.trim(); if (mode === 'friends') void enterFriends(); else void startMatch(); });
   document.querySelector('#player-name')?.addEventListener('input', e => name = (e.target as HTMLInputElement).value);
   document.querySelector('#selfie')?.addEventListener('change', uploadPhoto);
